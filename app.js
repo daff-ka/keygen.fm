@@ -402,7 +402,7 @@ try { if (localStorage.getItem('kgfm-side') === 'closed') setSide(false); } catc
 applyVolume();
 requestAnimationFrame(loop);
 
-fetch('tracks.json')
+fetch('tracks.json', { cache: 'no-cache' }) /* always revalidate the playlist */
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then(data => {
     tracks = data.map((d, i) => ({ i, fmt: 'XM', ...d }));

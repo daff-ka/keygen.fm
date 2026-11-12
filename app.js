@@ -30,10 +30,22 @@ let tracks = [];
    Web Audio (MediaElementSource → gain → analyser) for volume and the spectrum display. */
 const audio = new Audio();
 audio.preload = 'metadata';
-let ac, master, analyser, loading = false, muted = false;
+audio.playsInline = true;
+let ac, master, analyser, loading = false, muted = false, audioReady = false;
+
+/* iOS: audio routed through Web Audio follows the ring/silent switch ("ambient").
+   iOS 17+ lets the page declare itself a music player so it plays like a music app.
+   Older iOS has no navigator.audioSession: there we skip Web Audio so the plain
+   <audio> element is heard (the spectrum display then stays idle). */
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const hasAudioSession = 'audioSession' in navigator;
 
 function initAudio() {
-  if (ac) return;
+  if (audioReady) return;
+  audioReady = true;
+  if (hasAudioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
+  if (isIOS && !hasAudioSession) { applyVolume(); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
   master = ac.createGain();
   analyser = ac.createAnalyser();
@@ -53,7 +65,8 @@ function setLoading(on) { if (loading !== on) { loading = on; refresh(); } }
 
 function startAt(pos) {
   initAudio();
-  if (ac.state === 'suspended') ac.resume();
+  /* iOS can leave the context 'suspended' or 'interrupted' (calls, background) */
+  if (ac && ac.state !== 'running') ac.resume();
   if (Math.abs(audio.currentTime - pos) > .05) audio.currentTime = pos;
   state = 'play';
   loading = audio.readyState < 3; /* HAVE_FUTURE_DATA */
@@ -126,6 +139,7 @@ function applyVolume() {
   const v = +$('vol').value, b = $('muteBtn');
   $('vol').style.setProperty('--fill', v + '%');
   if (master) master.gain.value = muted ? 0 : Math.pow(v / 100, 2);
+  else if (audioReady) { audio.muted = muted; audio.volume = Math.pow(v / 100, 2); } /* no Web Audio (older iOS); iOS ignores .volume */
   b.setAttribute('aria-pressed', muted);
   b.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
   setTip(b, (muted ? 'Unmute' : 'Mute') + ' (M)');

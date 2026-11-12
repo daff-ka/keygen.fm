@@ -1,0 +1,71 @@
+/* Keygen FM design tokens.
+   Source of truth: Figma "Keygen FM" → Foundations and Motion pages.
+   CSS names = Figma variable code syntax. Components use Tier 2/3 only. */
+
+/* ===== Tier 1: reference tokens (Primitives) ===== */
+:root{
+  --ink-950:#101114; --ink-50:#F2F3F5; --paper-100:#F3F4F6; --paper-950:#0C0D10; --white:#FFFFFF; --card-900:#17191E;
+  --gray-400:#9CA1AB; --gray-500:#8E939C; --gray-600:#5B606B; --gray-700:#6B707B;
+  --alpha-ink-6:rgba(16,17,20,.06); --alpha-ink-10:rgba(16,17,20,.10); --alpha-ink-14:rgba(16,17,20,.14); --alpha-ink-28:rgba(16,17,20,.28);
+  --alpha-paper-8:rgba(242,243,245,.08); --alpha-paper-14:rgba(242,243,245,.14);
+  --lcd-200:#A6F7CF; --lcd-400:#34E08A; --lcd-700:#0F7A45; --screen-black:#07070B;
+
+  /* Layout */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px; --space-8:32px;
+  --radius-sm:0; --radius-md:0; --radius-lg:0;
+
+  /* Type */
+  --font-ui:"IBM Plex Mono",ui-monospace,"Courier New",monospace;
+  --font-data:"IBM Plex Mono",ui-monospace,"Courier New",monospace;
+  --font-scene:"Silkscreen","Courier New",monospace;
+
+  /* Motion */
+  --duration-instant:0ms; --duration-fast:120ms; --duration-base:200ms; --duration-loop:800ms; --delay-tooltip:400ms;
+  --easing-standard:cubic-bezier(.25,.1,.25,1); --easing-enter:cubic-bezier(0,0,.2,1); --easing-exit:cubic-bezier(.4,0,1,1);
+  --easing-oscillate:cubic-bezier(.42,0,.58,1); --easing-linear:linear;
+}
+
+/* ===== Tier 2: semantic tokens (Light) ===== */
+:root{
+  --color-bg:var(--paper-100); --color-surface:var(--white);
+  --color-text-primary:var(--ink-950); --color-text-secondary:var(--gray-600);
+  --color-separator:var(--alpha-ink-10); --color-fill:var(--alpha-ink-6); --color-fill-strong:var(--alpha-ink-10);
+  --color-track:var(--gray-500); --color-focus:var(--ink-950); --color-segment-on:var(--white);
+  --color-accent:var(--lcd-700); --color-accent-screen:var(--lcd-400); --color-accent-screen-hi:var(--lcd-200);
+  --color-screen:var(--screen-black); --color-shadow:var(--alpha-ink-6);
+  color-scheme:light;
+}
+
+/* ===== Tier 2: semantic tokens (Dark) ===== */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --color-bg:var(--paper-950); --color-surface:var(--card-900);
+    --color-text-primary:var(--ink-50); --color-text-secondary:var(--gray-400);
+    --color-separator:var(--alpha-paper-8); --color-fill:var(--alpha-paper-8); --color-fill-strong:var(--alpha-paper-14);
+    --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:#4B505A;
+    --color-accent:var(--lcd-400); --color-shadow:transparent;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --color-bg:var(--paper-950); --color-surface:var(--card-900);
+  --color-text-primary:var(--ink-50); --color-text-secondary:var(--gray-400);
+  --color-separator:var(--alpha-paper-8); --color-fill:var(--alpha-paper-8); --color-fill-strong:var(--alpha-paper-14);
+  --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:#4B505A;
+  --color-accent:var(--lcd-400); --color-shadow:transparent;
+  color-scheme:dark;
+}
+
+/* ===== Effect styles ===== */
+:root{
+  --shadow-card:0 8px 24px var(--color-shadow);
+  --shadow-segment:0 1px 3px var(--alpha-ink-14);
+  --shadow-thumb:0 0 0 1px var(--alpha-ink-14),0 2px 6px var(--alpha-ink-28);
+}
+
+/* ===== Tier 3: component tokens ===== */
+:root{
+  --button-play-bg:var(--color-text-primary); --button-play-fg:var(--color-surface);
+  --slider-fill:var(--color-text-primary); --slider-track:var(--color-track); --slider-thumb:var(--white);
+  --row-active-bg:var(--color-fill);
+}

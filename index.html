@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Keygen FM</title>
+<meta name="description" content="A web player for keygen and cracktro music.">
+<!-- Favicons: Figma → Components → Favicon (Favicon/Glyph) -->
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="img/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="img/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="icon" href="img/favicon-48.png" sizes="48x48" type="image/png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#101114">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+<script>
+  /* apply the saved theme before first paint to avoid a flash */
+  try{const t=localStorage.getItem('kgfm-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="brand">
+    <h1 class="wm" aria-label="Keygen FM"><span aria-hidden="true">KEYGEN</span><span class="fm" aria-hidden="true">FM</span></h1>
+    <button class="ib sm" id="themeBtn" aria-label="Switch to dark theme" title="Switch to dark theme"></button>
+    <button class="ib sm" id="sideBtn" aria-controls="side" aria-expanded="true" aria-label="Collapse playlist" title="Collapse playlist ([)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15"/><path d="M9.5 4.5v15"/></svg></button>
+  </header>
+
+  <aside class="side" id="side" aria-labelledby="plHead">
+    <div class="side-head"><h2 id="plHead">Playlist</h2><p class="sum" id="sum"></p></div>
+    <div class="tools">
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input id="q" type="search" placeholder="Search tracks" aria-label="Search the playlist" autocomplete="off">
+      </label>
+      <div class="seg" id="seg" role="group" aria-label="Filter by format"></div>
+    </div>
+    <ol class="list" id="list"></ol>
+  </aside>
+
+  <main class="main">
+    <section class="np" aria-labelledby="npHead">
+      <h2 id="npHead" class="sr">Now playing</h2>
+      <div class="screen"><canvas id="stage" aria-hidden="true"></canvas></div>
+      <div class="track"><h3 class="title" id="title"></h3><p class="meta" id="meta"></p></div>
+      <div class="scrub">
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position in track">
+        <div class="times" aria-hidden="true"><span id="tEl">0:00</span><span id="tRem">-0:00</span></div>
+      </div>
+      <div class="ctrl">
+        <button class="ib tg" id="shufBtn" aria-pressed="false" aria-label="Shuffle" title="Enable shuffle"><!-- Figma Icon/Shuffle (4:25) --><svg viewBox="0 0 22 22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M19.8981 5.76858L17.1481 3.01858C17.0619 2.93242 16.9629 2.86611 16.8511 2.81967C16.7386 2.77322 16.6216 2.75 16.5 2.75C16.3784 2.75 16.2614 2.77322 16.1489 2.81967C16.0371 2.86611 15.9381 2.93242 15.8519 3.01858C15.8091 3.06136 15.7713 3.1075 15.7383 3.157C15.7046 3.20711 15.6762 3.25997 15.653 3.31558C15.6298 3.37119 15.6124 3.42864 15.6008 3.48792C15.5891 3.54719 15.5833 3.60678 15.5833 3.66667C15.5833 3.72656 15.5891 3.78614 15.6008 3.84542C15.6124 3.90469 15.6298 3.96214 15.653 4.01775C15.6762 4.07336 15.7046 4.12622 15.7383 4.17633C15.7713 4.22583 15.8091 4.27197 15.8519 4.31475L17.0372 5.5H16.5C14.575 5.5 12.7417 6.76378 11 9.29133C9.25833 6.76378 7.425 5.5 5.5 5.5H2.75C2.62839 5.5 2.51136 5.52322 2.39892 5.56967C2.28708 5.61611 2.18808 5.68242 2.10192 5.76858C2.01575 5.85475 1.94944 5.95375 1.903 6.06558C1.85656 6.17803 1.83333 6.29506 1.83333 6.41667C1.83333 6.53828 1.85656 6.65531 1.903 6.76775C1.94944 6.87958 2.01575 6.97858 2.10192 7.06475C2.18808 7.15092 2.28708 7.21722 2.39892 7.26367C2.51136 7.31011 2.62839 7.33333 2.75 7.33333H5.5C6.93183 7.33333 8.40797 8.55556 9.92842 11C8.40797 13.4444 6.93183 14.6667 5.5 14.6667H2.75C2.62839 14.6667 2.51136 14.6899 2.39892 14.7363C2.28708 14.7828 2.18808 14.8491 2.10192 14.9353C2.01575 15.0214 1.94944 15.1204 1.903 15.2323C1.85656 15.3447 1.83333 15.4617 1.83333 15.5833C1.83333 15.7049 1.85656 15.822 1.903 15.9344C1.94944 16.0463 2.01575 16.1453 2.10192 16.2314C2.18808 16.3176 2.28708 16.3839 2.39892 16.4303C2.51136 16.4768 2.62839 16.5 2.75 16.5H5.5C7.425 16.5 9.25833 15.2362 11 12.7087C12.7417 15.2362 14.575 16.5 16.5 16.5H17.0372L15.8519 17.6852C15.7658 17.7714 15.6994 17.8704 15.653 17.9823C15.6066 18.0947 15.5833 18.2117 15.5833 18.3333C15.5833 18.4549 15.6066 18.572 15.653 18.6844C15.6994 18.7962 15.7658 18.8953 15.8519 18.9814C15.9381 19.0676 16.0371 19.1339 16.1489 19.1803C16.2614 19.2268 16.3784 19.25 16.5 19.25C16.6216 19.25 16.7386 19.2268 16.8511 19.1803C16.9629 19.1339 17.0619 19.0676 17.1481 18.9814L19.8981 16.2314C19.9409 16.1886 19.9787 16.1425 20.0118 16.093C20.0454 16.0429 20.0738 15.99 20.097 15.9344C20.1202 15.8788 20.1376 15.8214 20.1493 15.7621C20.1609 15.7028 20.1667 15.6432 20.1667 15.5833C20.1667 15.5234 20.1609 15.4639 20.1493 15.4046C20.1376 15.3453 20.1202 15.2879 20.097 15.2323C20.0738 15.1766 20.0454 15.1238 20.0118 15.0737C19.9787 15.0242 19.9409 14.978 19.8981 14.9353L17.1481 12.1853C17.0619 12.0991 16.9629 12.0328 16.8511 11.9863C16.7386 11.9399 16.6216 11.9167 16.5 11.9167C16.3784 11.9167 16.2614 11.9399 16.1489 11.9863C16.0371 12.0328 15.9381 12.0991 15.8519 12.1853C15.8091 12.228 15.7713 12.2742 15.7383 12.3237C15.7046 12.3738 15.6762 12.4266 15.653 12.4823C15.6298 12.5379 15.6124 12.5953 15.6008 12.6546C15.5891 12.7139 15.5833 12.7734 15.5833 12.8333C15.5833 12.8932 15.5891 12.9528 15.6008 13.0121C15.6124 13.0714 15.6298 13.1288 15.653 13.1844C15.6762 13.24 15.7046 13.2929 15.7383 13.343C15.7713 13.3925 15.8091 13.4386 15.8519 13.4814L17.0372 14.6667H16.5C15.0682 14.6667 13.592 13.4444 12.0716 11C13.592 8.55556 15.0682 7.33333 16.5 7.33333H17.0372L15.8519 8.51858C15.8091 8.56136 15.7713 8.6075 15.7383 8.657C15.7046 8.70711 15.6762 8.75997 15.653 8.81558C15.6298 8.87119 15.6124 8.92864 15.6008 8.98792C15.5891 9.04719 15.5833 9.10678 15.5833 9.16667C15.5833 9.22656 15.5891 9.28614 15.6008 9.34542C15.6124 9.40469 15.6298 9.46214 15.653 9.51775C15.6762 9.57336 15.7046 9.62622 15.7383 9.67633C15.7713 9.72583 15.8091 9.77197 15.8519 9.81475C15.9381 9.90092 16.0371 9.96722 16.1489 10.0137C16.2614 10.0601 16.3784 10.0833 16.5 10.0833C16.6216 10.0833 16.7386 10.0601 16.8511 10.0137C16.9629 9.96722 17.0619 9.90092 17.1481 9.81475L19.8981 7.06475C19.9409 7.02197 19.9787 6.97583 20.0118 6.92633C20.0454 6.87622 20.0738 6.82336 20.097 6.76775C20.1202 6.71214 20.1376 6.65469 20.1493 6.59542C20.1609 6.53614 20.1667 6.47656 20.1667 6.41667C20.1667 6.35678 20.1609 6.29719 20.1493 6.23792C20.1376 6.17864 20.1202 6.12119 20.097 6.06558C20.0738 6.00997 20.0454 5.95711 20.0118 5.907C19.9787 5.8575 19.9409 5.81136 19.8981 5.76858Z"/></svg></button>
+        <button class="ib" id="prevBtn" aria-label="Previous track" title="Previous track (Z)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4.5" y="5" width="2.5" height="14" rx="1.25"/><path d="M19.5 6.2v11.6a1 1 0 0 1-1.55.83L9.7 12.83a1 1 0 0 1 0-1.66l8.25-5.8a1 1 0 0 1 1.55.83z"/></svg></button>
+        <button class="play" id="playBtn" aria-label="Play" title="Play (Space)"></button>
+        <button class="ib" id="nextBtn" aria-label="Next track" title="Next track (B)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="17" y="5" width="2.5" height="14" rx="1.25"/><path d="M4.5 6.2v11.6a1 1 0 0 0 1.55.83l8.25-5.8a1 1 0 0 0 0-1.66L6.05 5.37A1 1 0 0 0 4.5 6.2z"/></svg></button>
+        <button class="ib tg" id="repBtn" aria-pressed="false" data-mode="off" aria-label="Repeat: off" title="Enable repeat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg></button>
+      </div>
+      <div class="volume">
+        <button class="ib" id="muteBtn" aria-pressed="false" aria-label="Mute" title="Mute (M)"><svg id="muteIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button>
+        <input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume">
+        <svg class="vhi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18.5 6.5a8 8 0 0 1 0 11"/></svg>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="app.js" defer></script>
+</body>
+</html>

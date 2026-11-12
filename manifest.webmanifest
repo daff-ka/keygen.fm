@@ -1,0 +1,13 @@
+{
+  "name": "Keygen FM",
+  "short_name": "Keygen FM",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "icons": [
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "img/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

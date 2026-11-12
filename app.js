@@ -24,9 +24,13 @@ const IC = {
 
 let tracks = [];
 
-/* ---------- Audio (Web Audio: needed for the spectrum analyser) ---------- */
-let ac, master, analyser, src = null, loading = false, token = 0, muted = false;
-const buffers = new Map();
+/* ---------- Audio ----------
+   Playback streams through an <audio> element, so a track starts after the first few KB
+   instead of after downloading and decoding the whole file. The element is routed into
+   Web Audio (MediaElementSource → gain → analyser) for volume and the spectrum display. */
+const audio = new Audio();
+audio.preload = 'metadata';
+let ac, master, analyser, loading = false, muted = false;
 
 function initAudio() {
   if (ac) return;
@@ -35,66 +39,45 @@ function initAudio() {
   analyser = ac.createAnalyser();
   analyser.fftSize = 256;
   analyser.smoothingTimeConstant = .75;
+  ac.createMediaElementSource(audio).connect(master);
   master.connect(analyser);
   analyser.connect(ac.destination);
   applyVolume();
 }
 
-function getBuffer(i) {
-  const t = tracks[i];
-  if (buffers.has(t.src)) return buffers.get(t.src);
-  const p = fetch(t.src)
-    .then(r => { if (!r.ok) throw new Error(r.status + ' ' + t.src); return r.arrayBuffer(); })
-    /* callback form of decodeAudioData for older Safari */
-    .then(ab => new Promise((res, rej) => ac.decodeAudioData(ab, res, rej)))
-    .then(b => { t.dur = b.duration; return b; });
-  p.catch(() => buffers.delete(t.src));
-  buffers.set(t.src, p);
-  return p;
-}
+let idx = 0, cur = null, state = 'stop', shuffle = false, repeatMode = 'off', dragging = false; /* repeatMode: off | all | one */
 
-let idx = 0, cur = null, state = 'stop', pausedPos = 0, posAt = 0, ctxAt = 0, shuffle = false, repeatMode = 'off', dragging = false; /* repeatMode: off | all | one */
+const position = () => audio.currentTime || 0;
 
-function position() {
-  if (state !== 'play') return pausedPos;
-  if (loading) return posAt;
-  return Math.min(cur.dur, Math.max(0, posAt + ac.currentTime - ctxAt));
-}
-function halt() {
-  token++;
-  if (src) { const s = src; src = null; try { s.stop(); } catch (e) {} s.disconnect(); }
-}
+function setLoading(on) { if (loading !== on) { loading = on; refresh(); } }
+
 function startAt(pos) {
   initAudio();
   if (ac.state === 'suspended') ac.resume();
-  halt();
-  const my = token, i = idx;
-  state = 'play'; loading = true; posAt = pos; refresh();
-  getBuffer(i).then(b => {
-    if (my !== token || i !== idx) return;
-    const s = ac.createBufferSource();
-    s.buffer = b; s.connect(master);
-    const off = Math.min(pos, Math.max(0, b.duration - .05));
-    s.start(0, off);
-    posAt = off; ctxAt = ac.currentTime; src = s; loading = false; refresh();
-  }).catch(err => {
-    console.error('Keygen FM: could not load track', err);
-    if (my !== token) return;
-    loading = false; state = 'stop'; refresh();
+  if (Math.abs(audio.currentTime - pos) > .05) audio.currentTime = pos;
+  state = 'play';
+  loading = audio.readyState < 3; /* HAVE_FUTURE_DATA */
+  refresh();
+  audio.play().catch(err => {
+    if (err.name === 'AbortError') return; /* superseded by another load or pause */
+    console.error('Keygen FM: could not play track', err);
+    state = 'stop'; loading = false; refresh();
   });
 }
 function load(i, autoplay) {
-  halt();
-  idx = i; cur = tracks[i]; pausedPos = 0; state = 'stop'; loading = false;
-  renderNow(); updateRows(); updateMedia();
+  state = 'stop'; loading = false;
+  audio.pause();
+  idx = i; cur = tracks[i];
+  audio.src = cur.src;
+  renderNow(); updateRows(); updateMedia(); prefetchNext();
   if (autoplay) startAt(0); else refresh();
 }
 function toggle() {
   if (!cur) return;
-  if (state === 'play') { pausedPos = position(); halt(); state = 'pause'; loading = false; refresh(); }
-  else startAt(state === 'pause' ? pausedPos : 0);
+  if (state === 'play') { state = 'pause'; loading = false; audio.pause(); refresh(); }
+  else startAt(state === 'pause' ? audio.currentTime : 0);
 }
-function stop() { halt(); pausedPos = 0; state = 'stop'; loading = false; refresh(); }
+function stop() { state = 'stop'; loading = false; audio.pause(); audio.currentTime = 0; refresh(); }
 function next(auto) {
   if (!cur) return;
   let n;
@@ -106,15 +89,39 @@ function next(auto) {
 }
 function prev() {
   if (!cur) return;
-  if (position() > 3) { if (state === 'play') startAt(0); else { pausedPos = 0; refresh(); } return; }
+  if (position() > 3) { audio.currentTime = 0; return; }
   load((idx - 1 + tracks.length) % tracks.length, state === 'play');
 }
 function seekTo(pos) {
   if (!cur) return;
-  pos = Math.max(0, Math.min(cur.dur - .05, pos));
-  if (state === 'play') startAt(pos);
-  else { pausedPos = pos; if (state === 'stop') state = 'pause'; refresh(); }
+  audio.currentTime = Math.max(0, Math.min(cur.dur - .05, pos));
+  if (state === 'stop') { state = 'pause'; refresh(); }
 }
+
+/* Warm the browser cache with the next track in playlist order. */
+function prefetchNext() {
+  if (tracks.length < 2) return;
+  const n = tracks[(idx + 1) % tracks.length];
+  if (document.querySelector(`link[rel="prefetch"][href="${n.src}"]`)) return;
+  const l = document.createElement('link');
+  l.rel = 'prefetch'; l.as = 'audio'; l.href = n.src;
+  document.head.appendChild(l);
+}
+
+audio.addEventListener('loadedmetadata', () => {
+  if (cur && isFinite(audio.duration)) { cur.dur = audio.duration; if (!dragging) paintTime(position()); }
+});
+audio.addEventListener('playing', () => setLoading(false));
+audio.addEventListener('waiting', () => { if (state === 'play') setLoading(true); });
+/* Repeat one uses audio.loop, so 'ended' only fires when the track should advance */
+audio.addEventListener('ended', () => { if (state === 'play') next(true); });
+/* paused from outside the page (headphones unplugged, OS controls) */
+audio.addEventListener('pause', () => { if (state === 'play' && !audio.ended) { state = 'pause'; loading = false; refresh(); } });
+audio.addEventListener('error', () => {
+  if (!cur || !audio.error) return;
+  console.error('Keygen FM: could not load track', cur.src, audio.error);
+  state = 'stop'; loading = false; refresh();
+});
 function applyVolume() {
   const v = +$('vol').value, b = $('muteBtn');
   $('vol').style.setProperty('--fill', v + '%');
@@ -203,6 +210,7 @@ function paintToggles() {
   const r = $('repBtn');
   r.setAttribute('aria-pressed', repeatMode !== 'off');
   r.dataset.mode = repeatMode;
+  audio.loop = repeatMode === 'one';
   r.setAttribute('aria-label', 'Repeat: ' + repeatMode);
   setTip(r, { off: 'Enable repeat', all: 'Enable repeat one', one: 'Disable repeat' }[repeatMode]);
 }
@@ -300,12 +308,7 @@ function drawStage(now) {
 new ResizeObserver(sizeStage).observe(cv);
 
 function loop(now) {
-  if (cur) {
-    const p = position();
-    /* track ended: Repeat one loops the current track, otherwise advance */
-    if (state === 'play' && !loading && p >= cur.dur - .02) { if (repeatMode === 'one') startAt(0); else next(true); }
-    if (!dragging) paintTime(position());
-  }
+  if (cur && !dragging) paintTime(position());
   drawStage(now);
   requestAnimationFrame(loop);
 }

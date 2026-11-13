@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <!-- ?v= busts the browser cache after a deploy: bump it whenever CSS/JS change -->
-<link rel="stylesheet" href="tokens.css?v=9">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="tokens.css?v=12">
+<link rel="stylesheet" href="style.css?v=12">
 <script>
   /* theme before first paint (no flash): the viewer's saved choice, otherwise dark by default */
   (function(){let t='dark';try{const s=localStorage.getItem('kgfm-theme');if(s==='light'||s==='dark')t=s}catch(e){}document.documentElement.dataset.theme=t})();
@@ -46,14 +46,15 @@
 
   <main class="main">
     <section class="np" aria-labelledby="npHead">
-      <!-- Title bar: wordmark, grip ridges, minimize button in the corner above the visualizer -->
+      <!-- Title bar: tracker readout, grip ridges, minimize button in the corner above the visualizer -->
       <div class="bar">
         <h2 id="npHead" class="sr">Now playing</h2>
-        <span class="wm bar-logo" aria-hidden="true"><span>KEYGEN</span><span class="fm">FM</span></span>
+        <span class="bar-readout" id="readout"></span>
         <span class="bar-grip" aria-hidden="true"></span>
+        <button class="ib sm" id="visBtn" aria-label="Visualizer: Spectrum" title="Change visualizer (V)"></button>
         <button class="ib sm" id="minBtn" aria-controls="screenWrap" aria-expanded="true" aria-label="Minimize player" title="Minimize player"></button>
       </div>
-      <div class="screen-wrap" id="screenWrap"><div class="screen-clip"><div class="screen"><canvas id="stage" aria-hidden="true"></canvas></div></div></div>
+      <div class="screen-wrap" id="screenWrap"><div class="screen-clip"><div class="screen"><canvas id="stage" aria-hidden="true"></canvas><span class="vis-label" id="visLabel" aria-live="polite"></span></div></div></div>
       <div class="track"><h3 class="title" id="title"></h3><p class="meta" id="meta"></p></div>
       <div class="scrub">
         <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position in track">
@@ -74,6 +75,6 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=9" defer></script>
+<script src="app.js?v=12" defer></script>
 </body>
 </html>

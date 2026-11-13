@@ -75,13 +75,19 @@ button{font:inherit;color:inherit}
 .np{width:min(100%,560px);background:var(--color-surface);border:1px solid var(--color-separator);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:var(--space-4) var(--space-4) var(--space-6)}
 .screen{position:relative;height:220px;border-radius:var(--radius-md);overflow:hidden;background:var(--color-screen)}
 .screen canvas{display:block;width:100%;height:100%}
+.screen{cursor:pointer} /* click cycles the visualizer mode */
+/* Mode name flashed in the display corner after a switch (LCD text) */
+.vis-label{position:absolute;top:10px;left:18px;font:500 11px/14px var(--font-data);letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent-screen);opacity:0;pointer-events:none;transition:opacity var(--duration-fast) var(--easing-exit)}
+.vis-label.on{opacity:1;transition-timing-function:var(--easing-enter)}
 .track{padding:var(--space-5) var(--space-2) 0}
 .title{margin:0;font:600 22px/28px var(--font-ui);overflow-wrap:anywhere}
-/* Title bar above the visualizer: wordmark · grip ridges · minimize button in the corner */
+/* Title bar above the visualizer: tracker readout · grip ridges · minimize button in the corner */
 .bar{display:flex;align-items:center;gap:var(--space-3);height:36px;margin:calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2) 0}
-.bar-logo{margin:0;flex:none} /* Brand/Logo wordmark, same as the header */
-.bar-grip{flex:1;height:7px;background:repeating-linear-gradient(to bottom,var(--color-fill-strong) 0 1px,transparent 1px 3px)}
-#minBtn{flex:none}
+.bar-readout{flex:none;font:400 12px/16px var(--font-data);font-variant-numeric:tabular-nums;color:var(--color-text-secondary);white-space:nowrap} /* Label/Small */
+.bar-grip{flex:1;min-width:0;height:7px;background:repeating-linear-gradient(to bottom,var(--color-fill-strong) 0 1px,transparent 1px 3px)}
+#minBtn,#visBtn{flex:none}
+.bar .ib.sm + .ib.sm{margin-left:calc(-1 * var(--space-3))} /* the two bar buttons sit together */
+.np.min #visBtn{display:none} /* nothing to switch while the visualizer is hidden */
 
 /* Minimize: the visualizer collapses under the title bar (Motion → Player minimize) */
 .screen-wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows var(--duration-base) var(--easing-standard),opacity var(--duration-base) var(--easing-standard)}

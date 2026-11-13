@@ -504,26 +504,55 @@ function drawMirror(still) {
    - graticule: brighter lines every 10 cells and a centre axis
    - phosphor: the two previous traces fade behind the current one (off with reduced motion) */
 const scopeTrail = [];
+let scopeEase = new Float32Array(0);
 /* shared by Scope and Ring: read the waveform, update auto gain, return the trigger index */
+const wv = new Float32Array(1024);   /* smoothed waveform, −1…1, shared by Scope and Ring */
+const trigRef = new Float32Array(64); /* previous window, sampled, for a stable trigger */
+let trigPrev = 0;
 function readWave() {
   const playing = state === 'play' && !loading;
   if (playing && scopeAnalyser) scopeAnalyser.getByteTimeDomainData(wave); else wave.fill(128);
   let sum = 0, peak = 0;
-  for (let i = 0; i < wave.length; i++) { const d = (wave[i] - 128) / 128; sum += d * d; peak = Math.max(peak, Math.abs(d)); }
+  for (let i = 0; i < wave.length; i++) {
+    /* light 3-tap smoothing: tames noise-channel spikes, keeps the shape */
+    const d = ((wave[Math.max(0, i - 1)] + 2 * wave[i] + wave[Math.min(wave.length - 1, i + 1)]) / 4 - 128) / 128;
+    wv[i] = d; sum += d * d; peak = Math.max(peak, Math.abs(d));
+  }
   const rms = Math.sqrt(sum / wave.length);
   /* auto gain: peaks reach ~85 % of the half height, capped by RMS so sparse spikes cannot squash the trace */
   const target = rms > .002 ? Math.min(40, .85 / peak, .5 / rms) : scopeGain;
   scopeGain += (target - scopeGain) * (target < scopeGain ? .3 : .05); /* fast attack, slow release */
-  /* trigger: first rising crossing of the centre in the first half of the buffer */
-  let t0 = 0;
-  for (let i = 1; i < wave.length >> 1; i++) if (wave[i - 1] < 128 && wave[i] >= 128) { t0 = i; break; }
+
+  /* trigger: rising crossings with hysteresis (arm below −h, fire at 0) in the first half; of up to
+     8 candidates take the one whose window best matches the previous frame, so the trace stands still */
+  const half = wave.length >> 1, span = half, h = Math.max(.01, rms * .35);
+  const cands = [];
+  let armed = false;
+  for (let i = 1; i < half && cands.length < 8; i++) {
+    if (wv[i] < -h) armed = true;
+    else if (armed && wv[i - 1] < 0 && wv[i] >= 0) { cands.push(i); armed = false; }
+  }
+  let t0 = cands.length ? cands[0] : Math.min(trigPrev, half - 1);
+  if (cands.length > 1) {
+    let best = Infinity;
+    for (const c of cands) {
+      let e = 0;
+      for (let k = 0; k < 64; k++) e += Math.abs(wv[c + Math.floor(k * span / 64)] - trigRef[k]);
+      if (e < best) { best = e; t0 = c; }
+    }
+  }
+  for (let k = 0; k < 64; k++) trigRef[k] = wv[t0 + Math.floor(k * span / 64)];
+  trigPrev = t0;
   return t0;
 }
 function drawScope(still) {
   const t0 = readWave();
-  const cols = Math.floor((SW - PAD * 2 + SGAP) / PITCH), rows = Math.floor((SH - PAD * 2 + SGAP) / PITCH);
+  /* same LCD cell size as every other mode, also in full screen */
+  const sc = 1, P = PITCH * sc, Z = SEG * sc;
+  const cols = Math.floor((SW - PAD * 2 + SGAP * sc) / P), rows = Math.floor((SH - PAD * 2 + SGAP * sc) / P);
   const midRow = Math.floor(rows / 2), halfRows = Math.min(midRow, rows - 1 - midRow);
-  const cell = (c, r) => g.fillRect(PAD + c * PITCH, PAD + r * PITCH, SEG, SEG);
+  const ox = Math.round((SW - (cols * P - SGAP * sc)) / 2), oy = Math.round((SH - (rows * P - SGAP * sc)) / 2);
+  const cell = (c, r) => g.fillRect(ox + c * P, oy + r * P, Z, Z);
 
   /* graticule */
   g.fillStyle = ACC;
@@ -535,24 +564,28 @@ function drawScope(still) {
 
   const span = wave.length >> 1;
 
-  /* trace: per column, the row range covered by its samples */
+  /* trace: per column the mean of its samples, eased over time (each column moves part of the way
+     to its new value every frame), joined into one continuous line */
+  if (scopeEase.length !== cols) scopeEase = new Float32Array(cols);
+  const ease = still ? 1 : .45;
   const toRow = v => Math.max(0, Math.min(rows - 1, Math.round(midRow - Math.max(-1, Math.min(1, v * scopeGain)) * halfRows)));
   const trace = new Array(cols);
-  let prevLo = midRow, prevHi = midRow;
+  let prev = midRow;
   for (let c = 0; c < cols; c++) {
     const a = t0 + Math.floor(c / cols * span), b = Math.max(a + 1, t0 + Math.floor((c + 1) / cols * span));
-    let lo = rows, hi = -1;
-    for (let i = a; i < b; i++) { const r = toRow((wave[i] - 128) / 128); if (r < lo) lo = r; if (r > hi) hi = r; }
-    if (c > 0) { lo = Math.min(lo, prevHi); hi = Math.max(hi, prevLo); } /* join to the previous column */
-    trace[c] = [lo, hi]; prevLo = lo; prevHi = hi;
+    let m = 0; for (let i = a; i < b; i++) m += wv[i]; m /= (b - a);
+    scopeEase[c] += (m - scopeEase[c]) * ease;
+    const r = toRow(scopeEase[c]);
+    trace[c] = c ? [Math.min(prev, r), Math.max(prev, r)] : [r, r]; /* join to the previous column */
+    prev = r;
   }
 
-  /* phosphor persistence */
+  /* phosphor persistence: one faint previous frame */
   if (!still) {
     scopeTrail.unshift(trace);
-    if (scopeTrail.length > 3) scopeTrail.length = 3;
+    if (scopeTrail.length > 2) scopeTrail.length = 2;
     g.fillStyle = ACC;
-    [.28, .12].forEach((alpha, k) => {
+    [.18].forEach((alpha, k) => {
       const old = scopeTrail[k + 1]; if (!old || old.length !== cols) return;
       g.globalAlpha = alpha;
       for (let c = 0; c < cols; c++) for (let r = old[c][0]; r <= old[c][1]; r++) cell(c, r);
@@ -560,7 +593,7 @@ function drawScope(still) {
   } else scopeTrail.length = 0;
 
   /* current trace: brighter towards the extremes, with glow */
-  const grad = g.createLinearGradient(0, PAD, 0, PAD + rows * PITCH);
+  const grad = g.createLinearGradient(0, oy, 0, oy + rows * P);
   grad.addColorStop(0, ACC_HI); grad.addColorStop(.5, ACC); grad.addColorStop(1, ACC_HI);
   g.globalAlpha = 1; g.fillStyle = grad; g.shadowColor = ACC; g.shadowBlur = still ? 0 : 8;
   for (let c = 0; c < cols; c++) for (let r = trace[c][0]; r <= trace[c][1]; r++) cell(c, r);
@@ -605,14 +638,14 @@ function drawRing(still, dt) {
   let t1 = t0 + span;
   for (let d = 0; d < span * .4; d++) {
     const a = t0 + span + d, b = t0 + span - d;
-    if (a < wave.length && wave[a - 1] < 128 && wave[a] >= 128) { t1 = a; break; }
-    if (b > t0 + 8 && wave[b - 1] < 128 && wave[b] >= 128) { t1 = b; break; }
+    if (a < wave.length && wv[a - 1] < 0 && wv[a] >= 0) { t1 = a; break; }
+    if (b > t0 + 8 && wv[b - 1] < 0 && wv[b] >= 0) { t1 = b; break; }
   }
   t1 = Math.min(t1, wave.length - 1);
   const len = t1 - t0, fade = Math.floor(len * .08);
   const sample = i => { /* cross-fade the last 8 % into the first samples */
-    let v = (wave[t0 + i] - 128) / 128;
-    if (i > len - fade) { const w = (i - (len - fade)) / fade; v = v * (1 - w) + (wave[t0 + i - len + fade] - 128) / 128 * w; }
+    let v = wv[t0 + i];
+    if (i > len - fade) { const w = (i - (len - fade)) / fade; v = v * (1 - w) + wv[t0 + i - len + fade] * w; }
     return Math.max(-1, Math.min(1, v * scopeGain));
   };
 

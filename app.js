@@ -1,5 +1,5 @@
 /* Keygen FM — web player.
-   Tracks come from tracks.json; audio files live in audio/.
+   Tracks come from tracks.json; tracker modules live in audio/.
    Needs to be served over http(s): fetch() does not work from file://. */
 (() => {
 'use strict';
@@ -25,72 +25,126 @@ const IC = {
 let tracks = [];
 
 /* ---------- Audio ----------
-   Playback streams through an <audio> element, so a track starts after the first few KB
-   instead of after downloading and decoding the whole file. The element is routed into
-   Web Audio (MediaElementSource → gain → analyser) for volume and the spectrum display. */
-const audio = new Audio();
-audio.preload = 'metadata';
-audio.playsInline = true;
-let ac, master, analyser, loading = false, muted = false, audioReady = false;
+   Tracks are tracker modules (.xm, .mod, .it, .s3m) rendered live by libopenmpt
+   (WebAssembly) in an AudioWorklet, via chiptune3 — vendored in lib/chiptune3-0.8.9
+   (MIT; libopenmpt BSD). A module is a few KB to a few hundred KB, so tracks load fast.
+   Output: worklet → player gain → master gain (volume) → analyser (spectrum) → speakers. */
+const PLAYER_LIB = 'lib/chiptune3-0.8.9/chiptune3.js';
+let ac, master, analyser, player = null, playerReady = null, loading = false, muted = false;
+let posSec = 0, loadedSrc = null, endHandled = false, playToken = 0;
+const modules = new Map(); /* src → Promise<ArrayBuffer> */
 
-/* iOS: audio routed through Web Audio follows the ring/silent switch ("ambient").
-   iOS 17+ lets the page declare itself a music player so it plays like a music app.
-   Older iOS has no navigator.audioSession: there we skip Web Audio so the plain
-   <audio> element is heard (the spectrum display then stays idle). */
-const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const hasAudioSession = 'audioSession' in navigator;
+let idx = 0, cur = null, state = 'stop', shuffle = false, repeatMode = 'off', dragging = false; /* repeatMode: off | all | one */
+const repeatCount = () => repeatMode === 'one' ? -1 : 0; /* libopenmpt: -1 loops forever, 0 plays once */
 
+function getModule(t) {
+  if (!modules.has(t.src)) {
+    const p = fetch(t.src).then(r => { if (!r.ok) throw new Error(r.status + ' ' + t.src); return r.arrayBuffer(); });
+    p.catch(() => modules.delete(t.src));
+    modules.set(t.src, p);
+  }
+  return modules.get(t.src);
+}
+
+/* Must first run inside a user gesture: creates and unlocks the AudioContext. */
 function initAudio() {
-  if (audioReady) return;
-  audioReady = true;
-  if (hasAudioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
-  if (isIOS && !hasAudioSession) { applyVolume(); return; }
+  if (playerReady) return playerReady;
+  /* iOS 17+: play like a music app, ignoring the ring/silent switch */
+  if ('audioSession' in navigator) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
   ac = new (window.AudioContext || window.webkitAudioContext)();
   master = ac.createGain();
   analyser = ac.createAnalyser();
   analyser.fftSize = 256;
   analyser.smoothingTimeConstant = .75;
-  ac.createMediaElementSource(audio).connect(master);
   master.connect(analyser);
   analyser.connect(ac.destination);
   applyVolume();
+  playerReady = import('./' + PLAYER_LIB).then(({ ChiptuneJsPlayer }) => new Promise((resolve, reject) => {
+    if (!ac.audioWorklet) { reject(new Error('AudioWorklet not supported')); return; }
+    const p = new ChiptuneJsPlayer({ context: ac, repeatCount: repeatCount() });
+    const timer = setTimeout(() => reject(new Error('Player did not initialise')), 20000);
+    p.onInitialized(() => { clearTimeout(timer); p.gain.connect(master); player = p; resolve(p); });
+    p.onProgress(d => {
+      /* when looping (Repeat one) libopenmpt keeps counting past the end: wrap for display */
+      posSec = cur && cur.dur > 0 && d.pos > cur.dur ? d.pos % cur.dur : d.pos;
+      if (loading && state === 'play') setLoading(false);
+    });
+    p.onMetadata(m => {
+      if (!cur || !(m && m.dur > 0)) return;
+      cur.dur = m.dur;
+      const du = document.querySelector(`.row[data-i="${cur.i}"] .du`);
+      if (du) du.textContent = mmss(cur.dur);
+      if (!dragging) paintTime(position());
+    });
+    /* the worklet keeps reporting 'end' until the module is replaced: act once per track */
+    p.onEnded(() => {
+      if (endHandled) return;
+      endHandled = true;
+      if (state === 'play') next(true);
+    });
+    p.onError(e => {
+      console.error('Keygen FM: player error', e);
+      if (state === 'play') { state = 'stop'; loading = false; refresh(); }
+    });
+  }));
+  playerReady.catch(err => {
+    console.error('Keygen FM: could not start the player', err);
+    playerReady = null;
+    state = 'stop'; loading = false; refresh();
+  });
+  return playerReady;
 }
 
-let idx = 0, cur = null, state = 'stop', shuffle = false, repeatMode = 'off', dragging = false; /* repeatMode: off | all | one */
-
-const position = () => audio.currentTime || 0;
+const position = () => posSec;
 
 function setLoading(on) { if (loading !== on) { loading = on; refresh(); } }
 
 function startAt(pos) {
-  initAudio();
-  /* iOS can leave the context 'suspended' or 'interrupted' (calls, background) */
-  if (ac && ac.state !== 'running') ac.resume();
-  if (Math.abs(audio.currentTime - pos) > .05) audio.currentTime = pos;
-  state = 'play';
-  loading = audio.readyState < 3; /* HAVE_FUTURE_DATA */
-  refresh();
-  audio.play().catch(err => {
-    if (err.name === 'AbortError') return; /* superseded by another load or pause */
+  if (!cur) return;
+  const my = ++playToken, t = cur;
+  state = 'play'; loading = true; refresh();
+  const ready = initAudio();
+  if (ac.state !== 'running') ac.resume(); /* iOS: 'suspended' or 'interrupted' */
+  Promise.all([ready, getModule(t)]).then(([p, buf]) => {
+    if (my !== playToken || state !== 'play') return;
+    if (loadedSrc !== t.src) {
+      endHandled = false;
+      p.setRepeatCount(repeatCount());
+      p.play(buf);            /* copies the module into the worklet and starts it */
+      loadedSrc = t.src;
+      if (pos > .05) p.setPos(pos);
+    } else {
+      if (Math.abs(pos - posSec) > .05) p.setPos(pos);
+      p.unpause();
+    }
+  }).catch(err => {
+    if (my !== playToken) return;
     console.error('Keygen FM: could not play track', err);
     state = 'stop'; loading = false; refresh();
   });
 }
+function unloadModule() {
+  playToken++;
+  if (player) player.stop();
+  loadedSrc = null; posSec = 0;
+}
 function load(i, autoplay) {
   state = 'stop'; loading = false;
-  audio.pause();
+  unloadModule();
   idx = i; cur = tracks[i];
-  audio.src = cur.src;
   renderNow(); updateRows(); updateMedia(); prefetchNext();
   if (autoplay) startAt(0); else refresh();
 }
 function toggle() {
   if (!cur) return;
-  if (state === 'play') { state = 'pause'; loading = false; audio.pause(); refresh(); }
-  else startAt(state === 'pause' ? audio.currentTime : 0);
+  if (state === 'play') {
+    playToken++;
+    state = 'pause'; loading = false;
+    if (player) player.pause();
+    refresh();
+  } else startAt(state === 'pause' ? posSec : 0);
 }
-function stop() { state = 'stop'; loading = false; audio.pause(); audio.currentTime = 0; refresh(); }
+function stop() { state = 'stop'; loading = false; unloadModule(); refresh(); }
 function next(auto) {
   if (!cur) return;
   let n;
@@ -102,44 +156,36 @@ function next(auto) {
 }
 function prev() {
   if (!cur) return;
-  if (position() > 3) { audio.currentTime = 0; return; }
+  if (position() > 3) { seekTo(0); return; }
   load((idx - 1 + tracks.length) % tracks.length, state === 'play');
 }
 function seekTo(pos) {
   if (!cur) return;
-  audio.currentTime = Math.max(0, Math.min(cur.dur - .05, pos));
+  pos = Math.max(0, Math.min(cur.dur - .05, pos));
+  posSec = pos;
+  if (player && loadedSrc === cur.src) player.setPos(pos);
   if (state === 'stop') { state = 'pause'; refresh(); }
 }
 
-/* Warm the browser cache with the next track in playlist order. */
+/* Modules are tiny: fetch the next one ahead of time. */
 function prefetchNext() {
-  if (tracks.length < 2) return;
-  const n = tracks[(idx + 1) % tracks.length];
-  if (document.querySelector(`link[rel="prefetch"][href="${n.src}"]`)) return;
-  const l = document.createElement('link');
-  l.rel = 'prefetch'; l.as = 'audio'; l.href = n.src;
-  document.head.appendChild(l);
+  if (tracks.length > 1) getModule(tracks[(idx + 1) % tracks.length]).catch(() => {});
+}
+/* Warm the HTTP cache with the player library while the page is idle, so the first
+   Play does not wait for ~1.5 MB of WebAssembly. */
+function prefetchPlayer() {
+  const base = PLAYER_LIB.replace(/[^/]+$/, '');
+  [PLAYER_LIB, base + 'chiptune3.worklet.js', base + 'libopenmpt.worklet.js'].forEach(href => {
+    const l = document.createElement('link');
+    l.rel = 'prefetch'; l.href = href;
+    document.head.appendChild(l);
+  });
 }
 
-audio.addEventListener('loadedmetadata', () => {
-  if (cur && isFinite(audio.duration)) { cur.dur = audio.duration; if (!dragging) paintTime(position()); }
-});
-audio.addEventListener('playing', () => setLoading(false));
-audio.addEventListener('waiting', () => { if (state === 'play') setLoading(true); });
-/* Repeat one uses audio.loop, so 'ended' only fires when the track should advance */
-audio.addEventListener('ended', () => { if (state === 'play') next(true); });
-/* paused from outside the page (headphones unplugged, OS controls) */
-audio.addEventListener('pause', () => { if (state === 'play' && !audio.ended) { state = 'pause'; loading = false; refresh(); } });
-audio.addEventListener('error', () => {
-  if (!cur || !audio.error) return;
-  console.error('Keygen FM: could not load track', cur.src, audio.error);
-  state = 'stop'; loading = false; refresh();
-});
 function applyVolume() {
   const v = +$('vol').value, b = $('muteBtn');
   $('vol').style.setProperty('--fill', v + '%');
   if (master) master.gain.value = muted ? 0 : Math.pow(v / 100, 2);
-  else if (audioReady) { audio.muted = muted; audio.volume = Math.pow(v / 100, 2); } /* no Web Audio (older iOS); iOS ignores .volume */
   b.setAttribute('aria-pressed', muted);
   b.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
   setTip(b, (muted ? 'Unmute' : 'Mute') + ' (M)');
@@ -224,7 +270,7 @@ function paintToggles() {
   const r = $('repBtn');
   r.setAttribute('aria-pressed', repeatMode !== 'off');
   r.dataset.mode = repeatMode;
-  audio.loop = repeatMode === 'one';
+  if (player) player.setRepeatCount(repeatCount());
   r.setAttribute('aria-label', 'Repeat: ' + repeatMode);
   setTip(r, { off: 'Enable repeat', all: 'Enable repeat one', one: 'Disable repeat' }[repeatMode]);
 }
@@ -405,8 +451,9 @@ requestAnimationFrame(loop);
 fetch('tracks.json', { cache: 'no-cache' }) /* always revalidate the playlist */
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then(data => {
-    tracks = data.map((d, i) => ({ i, fmt: 'XM', ...d }));
+    tracks = data.map((d, i) => ({ i, fmt: (d.src.split('.').pop() || '').toUpperCase(), ...d }));
     renderSeg(); renderList(); load(0, false);
+    (window.requestIdleCallback || (f => setTimeout(f, 1500)))(prefetchPlayer);
   })
   .catch(err => {
     console.error('Keygen FM: could not load tracks.json', err);

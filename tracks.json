@@ -6,9 +6,8 @@
     "title": "unreeeal superhero 3",
     "ch": 10,
     "bpm": 128,
-    "dur": 127.58,
-    "src": "audio/unreeeal-superhero-3.mp3",
-    "fmt": "XM"
+    "dur": 127.43,
+    "src": "audio/unreeeal-superhero-3.xm"
   },
   {
     "group": "PARADOX",
@@ -17,9 +16,8 @@
     "title": "alcatraz",
     "ch": 4,
     "bpm": 125,
-    "dur": 61.57,
-    "src": "audio/alcatraz.mp3",
-    "fmt": "XM"
+    "dur": 30.72,
+    "src": "audio/alcatraz.xm"
   },
   {
     "group": "RELOADED",
@@ -28,9 +26,8 @@
     "title": "Reloaded Keygen #1",
     "ch": 4,
     "bpm": 125,
-    "dur": 102.53,
-    "src": "audio/reloaded-keygen-1.mp3",
-    "fmt": "XM"
+    "dur": 51.2,
+    "src": "audio/reloaded-keygen-1.xm"
   },
   {
     "group": "0BiT",
@@ -39,8 +36,7 @@
     "title": "caramel condition",
     "ch": 32,
     "bpm": 105,
-    "dur": 181.47,
-    "src": "audio/caramel-condition.mp3",
-    "fmt": "XM"
+    "dur": 181.2,
+    "src": "audio/caramel-condition.xm"
   }
 ]

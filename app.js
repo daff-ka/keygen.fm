@@ -254,8 +254,7 @@ $('q').addEventListener('input', e => { query = e.target.value.trim().toLowerCas
 $('list').addEventListener('click', e => {
   if (e.target.id === 'clearQ') { $('q').value = ''; query = ''; renderList(); $('q').focus(); return; }
   const r = e.target.closest('.row'); if (!r) return;
-  load(+r.dataset.i, true);
-  if (mobile.matches) document.querySelector('.np').scrollIntoView({ behavior: reduce.matches ? 'auto' : 'smooth', block: 'start' });
+  load(+r.dataset.i, true); /* no auto-scroll to the player: the list stays where the user is */
 });
 
 /* ---------- Controls ---------- */
@@ -374,8 +373,8 @@ function loop(now) {
 }
 
 /* ---------- Theme and sidebar ---------- */
-const sysDark = matchMedia('(prefers-color-scheme: dark)');
-const isDark = () => rootEl.dataset.theme ? rootEl.dataset.theme === 'dark' : sysDark.matches;
+/* dark is the default theme (set in <head>); the toggle switches and remembers the choice */
+const isDark = () => rootEl.dataset.theme !== 'light';
 function paintTheme() {
   const d = isDark(), b = $('themeBtn'), l = d ? 'Switch to light theme' : 'Switch to dark theme';
   b.innerHTML = d ? IC.sun : IC.moon;
@@ -387,7 +386,6 @@ $('themeBtn').onclick = () => {
   try { localStorage.setItem('kgfm-theme', rootEl.dataset.theme); } catch (e) {}
   paintTheme();
 };
-sysDark.addEventListener('change', paintTheme);
 
 function setSide(open) {
   app.classList.toggle('collapsed', !open);

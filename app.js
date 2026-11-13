@@ -19,6 +19,8 @@ const IC = {
   vol: '<path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/>',
   mute: '<path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+  minimize: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>',
+  restore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
 };
 
@@ -325,7 +327,7 @@ function sizeStage() {
 }
 function drawStage(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (!SW) return;
+  if (!SW || np.classList.contains('min')) return; /* nothing to draw while minimized */
   const playing = state === 'play' && !loading, still = reduce.matches;
   if (playing && analyser) analyser.getByteFrequencyData(freq); else freq.fill(0);
 
@@ -397,6 +399,20 @@ function setSide(open) {
 }
 $('sideBtn').onclick = () => setSide(app.classList.contains('collapsed'));
 
+/* Minimize player: the visualizer collapses under the title bar (200 ms, instant with reduced motion);
+   title, seek bar and controls stay */
+const np = document.querySelector('.np');
+function setMin(min) {
+  np.classList.toggle('min', min);
+  const b = $('minBtn'), l = min ? 'Restore player' : 'Minimize player';
+  b.innerHTML = min ? IC.restore : IC.minimize;
+  b.setAttribute('aria-expanded', !min);
+  b.setAttribute('aria-label', l);
+  setTip(b, l);
+  try { localStorage.setItem('kgfm-player', min ? 'min' : 'full'); } catch (e) {}
+}
+$('minBtn').onclick = () => setMin(!np.classList.contains('min'));
+
 /* ---------- Tooltips (Figma: Motion → Tooltip) ----------
    Icon buttons carry their label in data-tip; the native title is removed so it does not double up. */
 const tip = document.createElement('div');
@@ -443,6 +459,9 @@ window.addEventListener('scroll', hideTip, true);
 paintTheme();
 paintToggles();
 try { if (localStorage.getItem('kgfm-side') === 'closed') setSide(false); } catch (e) {}
+let startMin = false;
+try { startMin = localStorage.getItem('kgfm-player') === 'min'; } catch (e) {}
+setMin(startMin);
 applyVolume();
 requestAnimationFrame(loop);
 

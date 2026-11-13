@@ -77,6 +77,18 @@ button{font:inherit;color:inherit}
 .screen canvas{display:block;width:100%;height:100%}
 .track{padding:var(--space-5) var(--space-2) 0}
 .title{margin:0;font:600 22px/28px var(--font-ui);overflow-wrap:anywhere}
+/* Title bar above the visualizer: wordmark · grip ridges · minimize button in the corner */
+.bar{display:flex;align-items:center;gap:var(--space-3);height:36px;margin:calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2) 0}
+.bar-logo{margin:0;flex:none} /* Brand/Logo wordmark, same as the header */
+.bar-grip{flex:1;height:7px;background:repeating-linear-gradient(to bottom,var(--color-fill-strong) 0 1px,transparent 1px 3px)}
+#minBtn{flex:none}
+
+/* Minimize: the visualizer collapses under the title bar (Motion → Player minimize) */
+.screen-wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows var(--duration-base) var(--easing-standard),opacity var(--duration-base) var(--easing-standard)}
+.screen-clip{min-height:0;overflow:hidden}
+.np.min .screen-wrap{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows var(--duration-base) var(--easing-standard),opacity var(--duration-base) var(--easing-standard),visibility 0s linear var(--duration-base)}
+.track{transition:padding-top var(--duration-base) var(--easing-standard)}
+.np.min .track{padding-top:var(--space-2)}
 .meta{margin:var(--space-1) 0 0;color:var(--color-text-secondary);font:400 15px/21px var(--font-data)}
 .scrub{padding:var(--space-4) var(--space-2) 0}
 .times{display:flex;justify-content:space-between;margin-top:2px;font:400 13px/18px var(--font-data);color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
@@ -145,7 +157,7 @@ input[type="range"]:active::-moz-range-thumb{transform:scale(1.25)}
 @media (prefers-reduced-motion: reduce){
   .tip,.tip.on{transform:none}
   /* vendor pseudo-elements stay in separate rules: one unknown selector drops the whole rule */
-  .app,.play{transition:none!important}
+  .app,.play,.screen-wrap,.np.min .screen-wrap,.track{transition:none!important}
   input[type="range"]::-webkit-slider-thumb{transition:none}
   input[type="range"]::-moz-range-thumb{transition:none}
   .play:active{transform:none}

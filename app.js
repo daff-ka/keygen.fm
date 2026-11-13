@@ -43,6 +43,7 @@ let idx = 0, cur = null, state = 'stop', shuffle = false, repeatMode = 'off', dr
 const repeatCount = () => repeatMode === 'one' ? -1 : 0; /* libopenmpt: -1 loops forever, 0 plays once */
 
 function getModule(t) {
+  if (t.data) return Promise.resolve(t.data);              /* My tracks: the module is stored with the track */
   if (!modules.has(t.src)) {
     const p = fetch(t.src).then(r => { if (!r.ok) throw new Error(r.status + ' ' + t.src); return r.arrayBuffer(); });
     p.catch(() => modules.delete(t.src));
@@ -244,11 +245,59 @@ function paintTime(p, setSeek = true) {
   seek.setAttribute('aria-valuetext', `${mmss(p)} of ${mmss(cur.dur)}`);
 }
 
+/* ---------- My tracks ----------
+   Modules saved by the 8-bit converter, kept in this browser (IndexedDB, database "kgfm", store
+   "tracks"). They join the playlist after the tracks from tracks.json, with src "mine:<id>". */
+let baseTracks = [], idbPromise = null;
+function idb() {
+  if (!idbPromise) idbPromise = new Promise((res, rej) => {
+    if (!('indexedDB' in window)) { rej(new Error('IndexedDB unavailable')); return; }
+    const r = indexedDB.open('kgfm', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('tracks', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  idbPromise.catch(() => { idbPromise = null; });
+  return idbPromise;
+}
+const idbReq = (mode, fn) => idb().then(db => new Promise((res, rej) => {
+  const tx = db.transaction('tracks', mode), q = fn(tx.objectStore('tracks'));
+  tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+}));
+const idbAll = () => idbReq('readonly', st => st.getAll());
+const idbPut = rec => idbReq('readwrite', st => st.put(rec));
+const idbDel = id => idbReq('readwrite', st => st.delete(id));
+function buildTracks(mine) {
+  const own = mine.slice().sort((a, b) => a.created - b.created).map(m => ({ ...m, src: 'mine:' + m.id, fmt: 'XM', mine: true }));
+  tracks = baseTracks.concat(own).map((d, i) => ({ i, fmt: (d.src.split('.').pop() || '').toUpperCase(), ...d }));
+}
+/* reload My tracks and keep playing what was playing (indices may shift) */
+async function refreshMine() {
+  const curSrc = cur && cur.src;
+  buildTracks(await idbAll());
+  const at = tracks.findIndex(t => t.src === curSrc);
+  if (at >= 0) { idx = at; cur = tracks[at]; renderNow(); }
+  else if (tracks.length) load(0, false);
+  renderList(); prefetchNext();
+}
+/* the converter hands over a finished XM: { meta: { title, group, release, kind, ch, dur }, data, done } */
+document.addEventListener('kgfm:add-track', async e => {
+  const { meta, data, done } = e.detail;
+  const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: Date.now(), ...meta, data };
+  try { await idbPut(rec); await refreshMine(); if (done) done(true); }
+  catch (err) { console.error('Keygen FM: could not save to My tracks', err); if (done) done(false, err); }
+});
+async function removeMine(t) {
+  if (!t || !t.mine || !confirm(`Remove “${t.title}” from Added? This cannot be undone.`)) return;
+  if (cur && cur.src === t.src) stop();
+  favs.delete(t.src); try { localStorage.setItem('kgfm-favs', JSON.stringify([...favs])); } catch (e) {}
+  try { await idbDel(t.id); await refreshMine(); } catch (err) { console.error('Keygen FM: could not remove the track', err); }
+}
+
 /* ---------- Playlist ----------
-   Two views: All (playlist order) and Favourites (liked tracks, playlist order).
-   Next/Previous stay inside Favourites while the view is on and the current track is liked. */
+   Three views: All (playlist order), Favourites (liked tracks) and Added (modules saved from the
+   8-bit converter, kept in this browser). Next/Previous follow the current view. */
 let view = 'all', query = '';
-try { if (localStorage.getItem('kgfm-view') === 'fav') view = 'fav'; } catch (e) {}
+try { const v = localStorage.getItem('kgfm-view'); if (v === 'fav' || v === 'mine') view = v; } catch (e) {}
 
 /* favourites, kept per viewer by track file */
 let favs = new Set();
@@ -272,22 +321,29 @@ const heart = on => `<svg width="14" height="12" viewBox="0 0 7 6" shape-renderi
 /* track indices in the order the current view plays them (ignoring search) */
 function playOrder() {
   if (view === 'fav') { const f = tracks.filter(isFav).map(t => t.i); if (f.length) return f; }
+  if (view === 'mine') { const m = tracks.filter(t => t.mine).map(t => t.i); if (m.length) return m; }
   return tracks.map(t => t.i);
 }
 
 function renderSeg() {
-  $('seg').innerHTML = [['all', 'All'], ['fav', 'Favourites']]
+  $('seg').innerHTML = [['all', 'All'], ['fav', 'Favourites'], ['mine', 'Added']]
     .map(([v, l]) => `<button data-v="${v}" aria-pressed="${v === view}">${l}</button>`).join('');
 }
-const rowHtml = t => `<li class="item"><button class="row" data-i="${t.i}" aria-current="${t.i === idx}"><span class="lead"></span><span class="txt"><span class="t">${esc(t.title)}</span><span class="g">${esc(t.group)}</span></span><span class="du">${mmss(t.dur)}</span></button><button class="fav" data-fav="${t.i}" aria-pressed="${isFav(t)}" aria-label="${isFav(t) ? 'Remove' : 'Add'} ${esc(t.title)} ${isFav(t) ? 'from' : 'to'} favourites">${heart(isFav(t))}</button></li>`;
+const DEL_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+/* in Added the row's button removes the track (the card's heart still likes it) */
+const rowHtml = t => `<li class="item"><button class="row" data-i="${t.i}" aria-current="${t.i === idx}"><span class="lead"></span><span class="txt"><span class="t">${esc(t.title)}</span><span class="g">${esc(t.group)}</span></span><span class="du">${mmss(t.dur)}</span></button>${view === 'mine' && t.mine
+  ? `<button class="fav del" data-del="${t.i}" aria-label="Remove ${esc(t.title)} from Added">${DEL_ICON}</button>`
+  : `<button class="fav" data-fav="${t.i}" aria-pressed="${isFav(t)}" aria-label="${isFav(t) ? 'Remove' : 'Add'} ${esc(t.title)} ${isFav(t) ? 'from' : 'to'} favourites">${heart(isFav(t))}</button>`}</li>`;
 function renderList() {
-  const base = view === 'fav' ? tracks.filter(isFav) : tracks;
+  const base = view === 'fav' ? tracks.filter(isFav) : view === 'mine' ? tracks.filter(t => t.mine) : tracks;
   const vis = base.filter(t => !query || (t.title + ' ' + t.group + ' ' + t.release).toLowerCase().includes(query));
   const tot = vis.reduce((a, t) => a + t.dur, 0);
   /* total length: "6 min 31 s" under an hour, "3 h 19 min" above */
   const len = tot >= 3600 ? `${Math.floor(tot / 3600)} h ${Math.floor(tot % 3600 / 60)} min` : `${Math.floor(tot / 60)} min ${Math.round(tot % 60)} s`;
   $('sum').textContent = `${vis.length} ${vis.length === 1 ? 'track' : 'tracks'}, ${len}`;
-  if (view === 'fav' && !base.length) {
+  if (view === 'mine' && !base.length) {
+    $('list').innerHTML = `<li class="empty">Nothing added yet. Convert a MIDI file in the 8-bit converter and choose Add to playlist. Added tracks are kept in this browser.<button id="openConv">Open the converter</button></li>`;
+  } else if (view === 'fav' && !base.length) {
     $('list').innerHTML = `<li class="empty">No favourites yet. Use the heart on a track to keep it here.<button id="showAll">Show all tracks</button></li>`;
   } else if (!vis.length) {
     $('list').innerHTML = `<li class="empty">No tracks match “${esc(query)}”. Try a group name or a program, like Photoshop.<button id="clearQ">Clear search</button></li>`;
@@ -329,11 +385,17 @@ $('q').addEventListener('input', e => { query = e.target.value.trim().toLowerCas
 $('list').addEventListener('click', e => {
   if (e.target.id === 'clearQ') { $('q').value = ''; query = ''; renderList(); $('q').focus(); return; }
   if (e.target.id === 'showAll') { setView('all'); return; }
+  if (e.target.id === 'openConv') { $('convBtn').click(); return; }
+  const del = e.target.closest('.del');
+  if (del) { removeMine(tracks[+del.dataset.del]); return; }
   const f = e.target.closest('.fav');
   if (f) { toggleFav(tracks[+f.dataset.fav]); const again = document.querySelector(`.fav[data-fav="${f.dataset.fav}"]`); if (again) again.focus(); return; }
   const r = e.target.closest('.row'); if (!r) return;
   load(+r.dataset.i, true); /* no auto-scroll to the player: the list stays where the user is */
 });
+
+/* the 8-bit converter pauses the player while it previews */
+document.addEventListener('kgfm:pause-player', () => { if (state === 'play') toggle(); });
 
 /* ---------- Controls ---------- */
 $('playBtn').onclick = toggle;
@@ -361,7 +423,7 @@ seek.addEventListener('change', () => { if (!cur) return; dragging = false; seek
 
 /* Keyboard: Space play/pause, Z prev, X play, C pause, B next, M mute, [ sidebar, ←/→ seek 5 s */
 document.addEventListener('keydown', e => {
-  if (!cur || e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input[type="search"]')) return;
+  if (!cur || e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input[type="search"]') || document.querySelector('dialog[open]')) return; /* no player shortcuts while a dialog is open */
   const k = e.key.toLowerCase();
   if (k === ' ' && !e.target.matches('button,input')) { e.preventDefault(); toggle(); }
   else if (k === 'z') prev();
@@ -570,10 +632,24 @@ function drawScope(still) {
   const ease = still ? 1 : .45;
   const toRow = v => Math.max(0, Math.min(rows - 1, Math.round(midRow - Math.max(-1, Math.min(1, v * scopeGain)) * halfRows)));
   const trace = new Array(cols);
-  let prev = midRow;
+  const means = new Float32Array(cols);
   for (let c = 0; c < cols; c++) {
     const a = t0 + Math.floor(c / cols * span), b = Math.max(a + 1, t0 + Math.floor((c + 1) / cols * span));
-    let m = 0; for (let i = a; i < b; i++) m += wv[i]; m /= (b - a);
+    let m = 0; for (let i = a; i < b; i++) m += wv[i]; means[c] = m / (b - a);
+  }
+  /* the window holds only part of a bass cycle, always its rising half (the trigger fires on a
+     rising crossing), so the trace leaned to the right and floated above the axis. Like a scope's
+     AC coupling, remove that slow part: the line through the mean of the first and last 10 % of the
+     window (tilt), then the window's mean (offset). */
+  const edge = Math.max(1, Math.round(cols * .1));
+  let head = 0, tail = 0, total = 0;
+  for (let c = 0; c < edge; c++) { head += means[c]; tail += means[cols - 1 - c]; }
+  const tilt = (tail - head) / edge;
+  for (let c = 0; c < cols; c++) { means[c] -= tilt * ((c - (edge - 1) / 2) / (cols - edge) - .5); total += means[c]; }
+  const level = total / cols;
+  let prev = midRow;
+  for (let c = 0; c < cols; c++) {
+    const m = means[c] - level;
     scopeEase[c] += (m - scopeEase[c]) * ease;
     const r = toRow(scopeEase[c]);
     trace[c] = c ? [Math.min(prev, r), Math.max(prev, r)] : [r, r]; /* join to the previous column */
@@ -933,13 +1009,17 @@ setMin(startMin);
 applyVolume();
 requestAnimationFrame(loop);
 
-fetch('tracks.json', { cache: 'no-cache' }) /* always revalidate the playlist */
-  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(data => {
-    tracks = data.map((d, i) => ({ i, fmt: (d.src.split('.').pop() || '').toUpperCase(), ...d }));
+Promise.all([
+  fetch('tracks.json', { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }), /* always revalidate */
+  idbAll().catch(() => [])                                                                                          /* My tracks; none when storage is unavailable */
+])
+  .then(([data, mine]) => {
+    baseTracks = data;
+    buildTracks(mine);
     renderSeg(); renderList();
-    const firstFav = view === 'fav' ? tracks.find(isFav) : null; /* opening in Favourites: start on a favourite */
-    load(firstFav ? firstFav.i : 0, false);
+    /* opening in Favourites or Mine: start on one of those */
+    const first = view === 'fav' ? tracks.find(isFav) : view === 'mine' ? tracks.find(t => t.mine) : null;
+    load(first ? first.i : 0, false);
     (window.requestIdleCallback || (f => setTimeout(f, 1500)))(prefetchPlayer);
   })
   .catch(err => {

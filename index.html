@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <!-- ?v= busts the browser cache after a deploy: bump it whenever CSS/JS change -->
-<link rel="stylesheet" href="tokens.css?v=37">
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="tokens.css?v=84">
+<link rel="stylesheet" href="style.css?v=84">
 <script>
   /* theme before first paint (no flash): the viewer's saved choice, otherwise dark by default */
   (function(){let t='dark';try{const s=localStorage.getItem('kgfm-theme');if(s==='light'||s==='dark')t=s}catch(e){}document.documentElement.dataset.theme=t})();
@@ -28,6 +28,7 @@
 <div class="app">
   <header class="brand">
     <h1 class="wm" aria-label="Keygen FM"><span aria-hidden="true">KEYGEN</span><span class="fm" aria-hidden="true">FM</span></h1>
+    <button class="ib sm" id="convBtn" aria-haspopup="dialog" aria-controls="conv" aria-label="8-bit converter" title="8-bit converter"></button>
     <button class="ib sm" id="themeBtn" aria-label="Switch to dark theme" title="Switch to dark theme"></button>
     <button class="ib sm" id="sideBtn" aria-controls="side" aria-expanded="true" aria-label="Collapse playlist" title="Collapse playlist ([)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15"/><path d="M9.5 4.5v15"/></svg></button>
   </header>
@@ -82,6 +83,59 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=37" defer></script>
+<!-- 8-bit converter (convert.js): runs in the browser, the file is never uploaded -->
+<dialog class="conv" id="conv" aria-labelledby="convTitle">
+  <div class="conv-head">
+    <h2 id="convTitle">8-bit converter</h2>
+    <button class="ib sm" id="convClose" aria-label="Close" title="Close (Esc)"></button>
+  </div>
+  <p class="conv-note">Turn a MIDI file into 8-bit chip music. It all happens in your browser; the file is not uploaded.</p>
+  <label class="drop" id="drop">
+    <input type="file" id="convFile" accept=".mid,.midi,audio/midi,audio/x-midi" class="sr">
+    <span id="dropText">Choose a MIDI file or drop it here</span>
+    <span class="drop-hint">.mid or .midi · up to 15 min</span>
+  </label>
+  <!-- BitMidi browser: searches and downloads go from the browser straight to bitmidi.com (CORS-enabled API) -->
+  <form class="conv-find" id="findForm" role="search">
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="findQ" type="search" placeholder="Or search BitMidi, e.g. imperial march" aria-label="Search MIDI files on BitMidi" autocomplete="off">
+    </label>
+  </form>
+  <ul class="conv-results" id="findList" aria-label="BitMidi results" hidden></ul>
+  <p class="conv-credit" id="findCredit" hidden>MIDI files from <a href="https://bitmidi.com/" target="_blank" rel="noopener">BitMidi</a>; your search is sent to bitmidi.com.</p>
+  <div class="conv-body" id="convBody" hidden>
+    <p class="conv-file"><span id="convName"></span> <span id="convInfo"></span></p>
+    <p class="conv-hint">Played on a sound chip: the top line on a pulse wave, the bass on a stepped triangle, chords as a fast arpeggio and drums on noise.</p>
+    <div class="conv-row conv-row-seg"><span>Lead tone</span><div class="seg" id="cDuty" role="group" aria-label="Lead tone (pulse width)"><button data-d="0.125" aria-pressed="false" title="Thin: 12.5 % pulse, nasal and buzzy">Thin</button><button data-d="0.25" aria-pressed="false" title="Classic: 25 % pulse, the bright NES lead">Classic</button><button data-d="0.5" aria-pressed="false" title="Round: 50 % square, soft and hollow">Round</button></div></div>
+    <label class="conv-check"><input type="checkbox" id="cDrums"> Drums</label>
+    <label class="conv-check"><input type="checkbox" id="cArp"><span>Chord arpeggio <span class="conv-hint-inline">(fast steps through chords, the classic chip trick)</span></span></label>
+    <label class="conv-row"><span>Bit depth</span><input type="range" id="cBits" min="1" max="8" step="1"><output id="oBits"></output></label>
+    <label class="conv-row"><span>Sample rate</span><input type="range" id="cRate" min="0" max="5" step="1"><output id="oRate"></output></label>
+    <div class="conv-play">
+      <button class="conv-pp" id="cPlay" aria-label="Play preview"></button>
+      <div class="conv-seek">
+        <input id="cSeek" type="range" min="0" max="1000" value="0" aria-label="Preview position">
+        <div class="times" aria-hidden="true"><span id="cTime">0:00 / 0:00</span></div>
+      </div>
+    </div>
+    <div class="conv-out">
+      <span class="conv-out-label">Download</span>
+      <div class="conv-dls" id="cExport" role="group" aria-label="Download as">
+        <button class="conv-dl" data-f="mp3" title="MP3, exactly as heard">MP3</button>
+        <button class="conv-dl" data-f="xm" title="XM tracker module: plays in Keygen FM and any tracker">XM</button>
+      </div>
+      <span id="cSize"></span>
+    </div>
+    <div class="conv-out">
+      <span class="conv-out-label">Playlist</span>
+      <button class="conv-add" id="cAdd" title="Save the XM module to the Added tab of the playlist (kept in this browser)">Add to playlist</button>
+    </div>
+    <p class="conv-credit">MP3 encoding by <a href="https://lame.sourceforge.io/" target="_blank" rel="noopener">LAME</a> (lamejs, LGPL). The XM module uses the chip voices as samples; bit depth and sample rate shape the MP3.</p>
+  </div>
+  <p class="conv-status" id="convStatus" aria-live="polite"></p>
+</dialog>
+<script src="app.js?v=84" defer></script>
+<script src="convert.js?v=84" defer></script>
 </body>
 </html>

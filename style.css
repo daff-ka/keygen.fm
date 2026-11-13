@@ -47,7 +47,15 @@ button{font:inherit;color:inherit}
 .seg button[aria-pressed="true"]{background:var(--color-segment-on);color:var(--color-text-primary);box-shadow:var(--shadow-segment)}
 
 /* Track rows */
-.list{list-style:none;margin:0;padding:0 var(--space-5) var(--space-4);overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
+.list{list-style:none;margin:0;padding:0 var(--space-5) var(--space-4);overflow:auto;flex:1;min-height:0;overscroll-behavior:contain;
+  /* the scrollbar sits inside the list: take its width (--sbw, measured in app.js) off the right padding
+     so rows end on the same line as the search field and segments */
+  padding-right:max(0px, calc(var(--space-5) - var(--sbw, 0px)));
+  scrollbar-width:thin;scrollbar-color:var(--color-fill-strong) transparent}
+.list::-webkit-scrollbar{width:8px}
+.list::-webkit-scrollbar-track{background:transparent}
+.list::-webkit-scrollbar-thumb{background:var(--color-fill-strong);border-radius:0}
+.list::-webkit-scrollbar-thumb:hover{background:var(--color-track)}
 .row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:var(--space-3);align-items:center;width:100%;min-height:56px;padding:var(--space-2) var(--space-3);border:0;border-radius:var(--radius-sm);background:none;text-align:left;cursor:pointer}
 .row:hover{background:var(--color-fill)}
 .row[aria-current="true"]{background:var(--row-active-bg)}
@@ -57,6 +65,22 @@ button{font:inherit;color:inherit}
 .t{font:500 14px/18px var(--font-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g{font:400 12px/16px var(--font-data);color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .du{font:400 12px/16px var(--font-data);color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+/* Favourite (pixel heart) on each row: shown on hover/focus or when liked; always on touch screens */
+.item{position:relative}
+.item .row{padding-right:calc(var(--space-3) + 36px)}
+.fav{position:absolute;right:var(--space-1);top:50%;margin-top:-18px;width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:var(--radius-sm);background:none;color:var(--color-text-secondary);cursor:pointer;opacity:0}
+.item:hover .fav,.fav:focus-visible,.fav[aria-pressed="true"]{opacity:1}
+.fav:hover{background:var(--color-fill);color:var(--color-text-primary)}
+.fav[aria-pressed="true"]{color:var(--color-text-primary)} /* state = filled shape, not colour alone */
+@media (hover: none){
+  .fav{opacity:1;width:44px;height:44px;margin-top:-22px;right:0}
+  .item .row{padding-right:calc(var(--space-3) + 40px)}
+}
+/* Like button next to the title in the player card */
+.track-head{display:flex;align-items:flex-start;gap:var(--space-2)}
+.track-head .title{flex:1;min-width:0}
+#likeBtn{flex:none;margin:-4px calc(-1 * var(--space-2)) 0 0} /* 36 px button centred on the 28 px title line */
+#likeBtn[aria-pressed="true"]{color:var(--color-text-primary)}
 .empty{padding:var(--space-6) var(--space-3);color:var(--color-text-secondary);font-size:15px}
 .empty button{display:block;margin-top:var(--space-3);height:36px;padding:0 var(--space-4);border:0;border-radius:var(--radius-sm);background:var(--color-fill);color:var(--color-text-primary);font-weight:500;cursor:pointer}
 
@@ -85,7 +109,7 @@ button{font:inherit;color:inherit}
 .bar{display:flex;align-items:center;gap:var(--space-3);height:36px;margin:calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2) 0}
 .bar-readout{flex:none;font:400 12px/16px var(--font-data);font-variant-numeric:tabular-nums;color:var(--color-text-secondary);white-space:nowrap} /* Label/Small */
 .bar-grip{flex:1;min-width:0;height:7px;background:repeating-linear-gradient(to bottom,var(--color-fill-strong) 0 1px,transparent 1px 3px)}
-#minBtn,#visBtn{flex:none}
+#minBtn,#visBtn,#fsBtn{flex:none}
 .bar .ib.sm + .ib.sm{margin-left:calc(-1 * var(--space-3))} /* the two bar buttons sit together */
 .np.min #visBtn{display:none} /* nothing to switch while the visualizer is hidden */
 
@@ -144,9 +168,24 @@ input[type="range"]:active::-moz-range-thumb{transform:scale(1.25)}
 .tip.on{opacity:1;visibility:visible;transform:none;transition:opacity var(--duration-fast) var(--easing-enter),transform var(--duration-fast) var(--easing-enter)}
 .tip kbd{font:500 11px/14px var(--font-ui);padding:0 4px;border:1px solid currentColor;opacity:.75}
 
+/* ===== Full screen player =====
+   .is-fs is set for the native Fullscreen API and for the fallback (iPhone: no element fullscreen),
+   where the card is pinned over the whole window. The visualizer takes all the free height. */
+.np.is-fs{position:fixed;inset:0;z-index:40;width:auto;max-width:none;height:100%;margin:0;border:0;box-shadow:none;display:flex;flex-direction:column;
+  padding:calc(var(--space-2) + env(safe-area-inset-top,0px)) calc(var(--space-6) + env(safe-area-inset-right,0px)) calc(var(--space-6) + env(safe-area-inset-bottom,0px)) calc(var(--space-6) + env(safe-area-inset-left,0px))}
+.np.is-fs .screen-wrap,.np.is-fs.min .screen-wrap{flex:1;min-height:0;grid-template-rows:1fr;opacity:1;visibility:visible}
+.np.is-fs .screen-clip{height:100%}
+.np.is-fs .screen{height:100%}
+.np.is-fs .track,.np.is-fs .scrub,.np.is-fs .ctrl,.np.is-fs .volume{width:min(100%,720px);margin-inline:auto}
+.np.is-fs .track{padding-top:var(--space-5)}
+.np.is-fs #minBtn{display:none}  /* nothing to minimize in full screen */
+.np.is-fs #visBtn{display:grid}
+.np:fullscreen{background:var(--color-surface)}
+.np::backdrop{background:var(--color-bg)}
+
 /* ===== Mobile ===== */
 @media (max-width: 860px){
-  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"brand" "main" "side";height:auto;min-height:100%}
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"brand" "main" "side";height:auto;min-height:100%;align-content:start} /* no free space spread between rows */
   .brand{border-right:0;border-bottom:0;background:var(--color-bg);padding:var(--space-3) calc(var(--space-3) + env(safe-area-inset-right,0px)) var(--space-1) calc(var(--space-3) + env(safe-area-inset-left,0px))}
   #sideBtn{display:none}
   .side{border-right:0;background:var(--color-bg)}

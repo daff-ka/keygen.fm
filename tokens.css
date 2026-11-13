@@ -6,9 +6,13 @@
 :root{
   --ink-950:#101114; --ink-50:#F2F3F5; --paper-100:#F3F4F6; --paper-950:#0C0D10; --white:#FFFFFF; --card-900:#17191E;
   --gray-400:#9CA1AB; --gray-500:#8E939C; --gray-600:#5B606B; --gray-700:#6B707B;
-  --alpha-ink-6:rgba(16,17,20,.06); --alpha-ink-10:rgba(16,17,20,.10); --alpha-ink-14:rgba(16,17,20,.14); --alpha-ink-28:rgba(16,17,20,.28);
-  --alpha-paper-8:rgba(242,243,245,.08); --alpha-paper-14:rgba(242,243,245,.14);
-  --lcd-200:#A6F7CF; --lcd-400:#34E08A; --lcd-700:#0F7A45; --screen-black:#07070B;
+  --alpha-ink-14:rgba(16,17,20,.14); --alpha-ink-28:rgba(16,17,20,.28); /* shadows */
+  /* Fills and separators are tinted overlays in the same cool base as the backgrounds (H≈224°),
+     so whatever they sit on keeps S≈12–17 % instead of washing out to neutral grey. */
+  --tint-ink-6:rgba(16,30,80,.06); --tint-ink-10:rgba(16,30,80,.10);          /* light mode */
+  --tint-paper-10:rgba(176,190,224,.10); --tint-paper-17:rgba(176,190,224,.17); /* dark mode */
+  --slate-500:#484E5D; /* selected segment, dark: H223° S13% L32% */
+  --lcd-200:#A6F7CF; --lcd-400:#34E08A; --lcd-700:#0F7A45; --screen-black:#08090B; /* same cool base as paper-950 / card-900 (H≈220–225°, S≈14–16%) */
 
   /* Layout */
   --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px; --space-8:32px;
@@ -29,10 +33,10 @@
 :root{
   --color-bg:var(--paper-100); --color-surface:var(--white);
   --color-text-primary:var(--ink-950); --color-text-secondary:var(--gray-600);
-  --color-separator:var(--alpha-ink-10); --color-fill:var(--alpha-ink-6); --color-fill-strong:var(--alpha-ink-10);
+  --color-separator:var(--tint-ink-10); --color-fill:var(--tint-ink-6); --color-fill-strong:var(--tint-ink-10);
   --color-track:var(--gray-500); --color-focus:var(--ink-950); --color-segment-on:var(--white);
   --color-accent:var(--lcd-700); --color-accent-screen:var(--lcd-400); --color-accent-screen-hi:var(--lcd-200);
-  --color-screen:var(--screen-black); --color-shadow:var(--alpha-ink-6);
+  --color-screen:var(--screen-black); --color-shadow:var(--tint-ink-6);
   color-scheme:light;
 }
 
@@ -41,8 +45,8 @@
   :root:not([data-theme="light"]){
     --color-bg:var(--paper-950); --color-surface:var(--card-900);
     --color-text-primary:var(--ink-50); --color-text-secondary:var(--gray-400);
-    --color-separator:var(--alpha-paper-8); --color-fill:var(--alpha-paper-8); --color-fill-strong:var(--alpha-paper-14);
-    --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:#4B505A;
+    --color-separator:var(--tint-paper-10); --color-fill:var(--tint-paper-10); --color-fill-strong:var(--tint-paper-17);
+    --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:var(--slate-500);
     --color-accent:var(--lcd-400); --color-shadow:transparent;
     color-scheme:dark;
   }
@@ -50,8 +54,8 @@
 :root[data-theme="dark"]{
   --color-bg:var(--paper-950); --color-surface:var(--card-900);
   --color-text-primary:var(--ink-50); --color-text-secondary:var(--gray-400);
-  --color-separator:var(--alpha-paper-8); --color-fill:var(--alpha-paper-8); --color-fill-strong:var(--alpha-paper-14);
-  --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:#4B505A;
+  --color-separator:var(--tint-paper-10); --color-fill:var(--tint-paper-10); --color-fill-strong:var(--tint-paper-17);
+  --color-track:var(--gray-700); --color-focus:var(--ink-50); --color-segment-on:var(--slate-500);
   --color-accent:var(--lcd-400); --color-shadow:transparent;
   color-scheme:dark;
 }

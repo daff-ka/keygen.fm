@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <!-- ?v= busts the browser cache after a deploy: bump it whenever CSS/JS change -->
-<link rel="stylesheet" href="tokens.css?v=12">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="tokens.css?v=34">
+<link rel="stylesheet" href="style.css?v=34">
 <script>
   /* theme before first paint (no flash): the viewer's saved choice, otherwise dark by default */
   (function(){let t='dark';try{const s=localStorage.getItem('kgfm-theme');if(s==='light'||s==='dark')t=s}catch(e){}document.documentElement.dataset.theme=t})();
@@ -39,7 +39,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
         <input id="q" type="search" placeholder="Search tracks" aria-label="Search the playlist" autocomplete="off">
       </label>
-      <div class="seg" id="seg" role="group" aria-label="Filter by format"></div>
+      <div class="seg" id="seg" role="group" aria-label="Playlist view"></div>
     </div>
     <ol class="list" id="list"></ol>
   </aside>
@@ -51,11 +51,18 @@
         <h2 id="npHead" class="sr">Now playing</h2>
         <span class="bar-readout" id="readout"></span>
         <span class="bar-grip" aria-hidden="true"></span>
-        <button class="ib sm" id="visBtn" aria-label="Visualizer: Spectrum" title="Change visualizer (V)"></button>
+        <button class="ib sm" id="visBtn" aria-label="Visualizer: Scope" title="Change visualizer (V)"></button>
+        <button class="ib sm" id="fsBtn" aria-pressed="false" aria-label="Full screen" title="Full screen (F)"></button>
         <button class="ib sm" id="minBtn" aria-controls="screenWrap" aria-expanded="true" aria-label="Minimize player" title="Minimize player"></button>
       </div>
       <div class="screen-wrap" id="screenWrap"><div class="screen-clip"><div class="screen"><canvas id="stage" aria-hidden="true"></canvas><span class="vis-label" id="visLabel" aria-live="polite"></span></div></div></div>
-      <div class="track"><h3 class="title" id="title"></h3><p class="meta" id="meta"></p></div>
+      <div class="track">
+        <div class="track-head">
+          <h3 class="title" id="title"></h3>
+          <button class="ib sm" id="likeBtn" aria-pressed="false" aria-label="Add to favourites" title="Add to favourites (L)"></button>
+        </div>
+        <p class="meta" id="meta"></p>
+      </div>
       <div class="scrub">
         <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position in track">
         <div class="times" aria-hidden="true"><span id="tEl">0:00</span><span id="tRem">-0:00</span></div>
@@ -75,6 +82,6 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=12" defer></script>
+<script src="app.js?v=34" defer></script>
 </body>
 </html>

@@ -421,7 +421,7 @@ const seek = $('seek');
 seek.addEventListener('input', () => { if (!cur) return; dragging = true; paintTime(seek.value / 1000 * cur.dur, false); });
 seek.addEventListener('change', () => { if (!cur) return; dragging = false; seekTo(seek.value / 1000 * cur.dur); });
 
-/* Keyboard: Space play/pause, Z prev, X play, C pause, B next, M mute, [ sidebar, ←/→ seek 5 s */
+/* Keyboard: Space play/pause, Z prev, X play, C pause, B next, M mute, V visualizer, D density, [ sidebar, ←/→ seek 5 s */
 document.addEventListener('keydown', e => {
   if (!cur || e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input[type="search"]') || document.querySelector('dialog[open]')) return; /* no player shortcuts while a dialog is open */
   const k = e.key.toLowerCase();
@@ -432,6 +432,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'c' && state === 'play') toggle();
   else if (k === 'm') { muted = !muted; applyVolume(); }
   else if (k === 'v') nextVis();
+  else if (k === 'd') setDensity(!calm);
   else if (k === 'l') toggleFav(cur);
   else if (k === 'f') setFs(!np.classList.contains('is-fs'));
   else if (k === '[' && !mobile.matches) setSide(app.classList.contains('collapsed'));
@@ -465,7 +466,7 @@ function sizeStage() {
   /* leaving native full screen, the card is briefly out of layout (0 × 0); never keep that size,
      measure again next frame instead (no further resize event comes once it is back to its old size) */
   if (!r.width || !r.height) { requestAnimationFrame(sizeStage); return; }
-  SW = r.width; SH = r.height;
+  SW = r.width; SH = r.height; setGrid(dpr);
   cv.width = Math.round(SW * dpr); cv.height = Math.round(SH * dpr);
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
@@ -477,7 +478,7 @@ function updateLevels(dt) {
   for (let b = 0; b < BANDS; b++) {
     const bin = 1 + Math.floor(Math.pow(b / BANDS, 1.5) * 95);
     const v = Math.min(1, freq[bin] / 235);
-    lvl[b] = Math.max(v, lvl[b] - dt * (still ? 3 : 2.2));
+    lvl[b] = Math.max(v, lvl[b] - dt * (still ? 3 : calm ? 1.4 : 2.2));
     pk[b] = still ? 0 : (lvl[b] >= pk[b] ? lvl[b] : Math.max(0, pk[b] - dt * .6));
   }
 }
@@ -495,9 +496,15 @@ try { const v = VIS.findIndex(m => m.id === localStorage.getItem('kgfm-vis')); i
 const wave = new Uint8Array(1024).fill(128);
 let scopeGain = 1; /* auto gain: the trace fills the display at any volume */
 let fall = [], fallRows = 0, fallCols = 0, fallT = 0;
+/* Density: Calm (default) redraws 24 times a second, eases harder and shows fewer details;
+   Full is the original 60 fps look. D switches, remembered per browser. */
+let calm = true, lastDraw = 0;
+try { if (localStorage.getItem('kgfm-density') === 'full') calm = false; } catch (e) {}
 
 function drawStage(now) {
-  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (calm && now - lastDraw < 1000 / 24 - 2) return;  /* Calm: keep the previous frame on screen */
+  lastDraw = now;
+  const dt = Math.min(calm ? .1 : .05, (now - last) / 1000); last = now;
   if (!SW || (np.classList.contains('min') && !np.classList.contains('is-fs'))) return; /* nothing to draw while minimized */
   updateLevels(dt);
   const still = reduce.matches;
@@ -513,7 +520,17 @@ function drawStage(now) {
 }
 
 /* shared grid: 18 px padding, 2 px segments, 2 px gaps */
-const PAD = 18, SEG = 2, SGAP = 2, PITCH = SEG + SGAP;
+/* In the card the display is small, so the grid is finer there: 1.5 px segments and gaps on HiDPI
+   screens (3 device pixels each, the same look at a smaller scale), 2 px + 1 px on 1× screens.
+   Full screen keeps 2 px + 2 px. Set in sizeStage. */
+const PAD = 18;
+let SEG = 2, SGAP = 2, PITCH = SEG + SGAP;
+function setGrid(dpr) {
+  if (np.classList.contains('is-fs')) { SEG = 2; SGAP = 2; }
+  else if (dpr >= 2) { SEG = 1.5; SGAP = 1.5; }
+  else { SEG = 2; SGAP = 1; }
+  PITCH = SEG + SGAP;
+}
 function columns() {
   const n = BANDS, colGap = Math.max(6, (SW - PAD * 2) / n * .38);
   return { n, colGap, bw: (SW - PAD * 2 - colGap * (n - 1)) / n };
@@ -620,6 +637,7 @@ function drawScope(still) {
   g.fillStyle = ACC;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const major = r === midRow || c % 10 === 0 || (r - midRow) % 10 === 0;
+    if (calm && !major) continue;            /* Calm: only the major lines of the graticule */
     g.globalAlpha = r === midRow ? .22 : major ? .12 : .05;
     cell(c, r);
   }
@@ -629,13 +647,18 @@ function drawScope(still) {
   /* trace: per column the mean of its samples, eased over time (each column moves part of the way
      to its new value every frame), joined into one continuous line */
   if (scopeEase.length !== cols) scopeEase = new Float32Array(cols);
-  const ease = still ? 1 : .45;
+  const ease = still ? 1 : calm ? .3 : .45;
   const toRow = v => Math.max(0, Math.min(rows - 1, Math.round(midRow - Math.max(-1, Math.min(1, v * scopeGain)) * halfRows)));
   const trace = new Array(cols);
   const means = new Float32Array(cols);
   for (let c = 0; c < cols; c++) {
     const a = t0 + Math.floor(c / cols * span), b = Math.max(a + 1, t0 + Math.floor((c + 1) / cols * span));
     let m = 0; for (let i = a; i < b; i++) m += wv[i]; means[c] = m / (b - a);
+  }
+  if (calm) for (let c = 0; c < cols; c += 3) {   /* Calm: one value per 3 columns, a stepped line */
+    const e = Math.min(cols, c + 3); let m = 0;
+    for (let k = c; k < e; k++) m += means[k];
+    for (let k = c; k < e; k++) means[k] = m / (e - c);
   }
   /* the window holds only part of a bass cycle, always its rising half (the trigger fires on a
      rising crossing), so the trace leaned to the right and floated above the axis. Like a scope's
@@ -702,7 +725,7 @@ function drawRing(still, dt) {
 
   /* polar graticule */
   g.fillStyle = ACC;
-  g.globalAlpha = .04; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cell(c, r);
+  g.globalAlpha = calm ? .025 : .04; for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cell(c, r);
   g.globalAlpha = .1;
   for (let c = Math.round(cc - maxR); c <= Math.round(cc + maxR); c++) cell(c, Math.round(cr));
   for (let r = Math.round(cr - maxR); r <= Math.round(cr + maxR); r++) cell(Math.round(cc), r);
@@ -726,7 +749,7 @@ function drawRing(still, dt) {
   };
 
   /* the curve as grid cells, consecutive points joined so the ring stays closed */
-  const N = 260, pts = new Set();
+  const N = calm ? 96 : 260, pts = new Set();      /* Calm: fewer points, straight joins between them */
   const at = k => {
     const a = k / N * Math.PI * 2 - Math.PI / 2 + ringAngle, rad = baseR + sample(Math.floor(k / N * len)) * amp;
     return [Math.round(cc + Math.cos(a) * rad), Math.round(cr + Math.sin(a) * rad)];
@@ -742,7 +765,7 @@ function drawRing(still, dt) {
   if (!still) {                                      /* phosphor persistence */
     ringTrail.unshift(cells);
     if (ringTrail.length > 3) ringTrail.length = 3;
-    [.28, .12].forEach((alpha, k) => { const old = ringTrail[k + 1]; if (!old) return; g.globalAlpha = alpha; old.forEach(p => cell(Math.floor(p / 1000), p % 1000)); });
+    (calm ? [.2] : [.28, .12]).forEach((alpha, k) => { const old = ringTrail[k + 1]; if (!old) return; g.globalAlpha = alpha; old.forEach(p => cell(Math.floor(p / 1000), p % 1000)); });
   } else ringTrail.length = 0;
 
   const cx = PAD + cc * PITCH + SEG / 2, cy = PAD + cr * PITCH + SEG / 2;
@@ -761,7 +784,7 @@ let pulsarLines = [], pulsarCols = 0, pulsarT = 0, pulsarGain = 2;
 function drawPulsar(still, dt) {
   const cols = Math.floor((SW - PAD * 2 + SGAP) / PITCH), rows = Math.floor((SH - PAD * 2 + SGAP) / PITCH);
   /* like the plot: a central column with dark margins, a dozen or two lines, peaks ~4 lines tall */
-  const gap = Math.max(3, Math.round(rows / 24));
+  const gap = calm ? Math.max(4, Math.round(rows / 16)) : Math.max(3, Math.round(rows / 24)); /* Calm: fewer lines */
   const amp = Math.min(Math.round(rows * .36), gap * 5);
   const count = Math.min(26, Math.floor((rows - amp - 1) / gap) + 1);
   const pc = Math.min(cols, Math.round(rows * 1.9)), x0 = Math.floor((cols - pc) / 2);
@@ -772,7 +795,7 @@ function drawPulsar(still, dt) {
 
   const playing = state === 'play' && !loading;
   pulsarT += dt;
-  if (playing && pulsarT >= .07) {
+  if (playing && pulsarT >= (calm ? .12 : .07)) {
     pulsarT = 0;
     const raw = new Float32Array(pc), line = new Float32Array(pc);
     if (scopeAnalyser) scopeAnalyser.getByteTimeDomainData(wave);
@@ -787,7 +810,7 @@ function drawPulsar(still, dt) {
       const grain = Math.abs(wave[Math.floor(u * (wave.length - 1))] - 128) / 128 * .3; /* texture from the waveform */
       raw[c] = (peak + grain) * win;
     }
-    const k = Math.max(1, Math.round(pc / 110));                        /* light smoothing: keep the teeth */
+    const k = Math.max(1, Math.round(pc / (calm ? 55 : 110)));                        /* light smoothing: keep the teeth */
     for (let c = 0; c < pc; c++) {
       let sum = 0, n = 0;
       for (let j = -k; j <= k; j++) { const x = c + j; if (x >= 0 && x < pc) { sum += raw[x]; n++; } }
@@ -801,7 +824,7 @@ function drawPulsar(still, dt) {
   }
 
   const cell = (c, r) => g.fillRect(PAD + c * PITCH, PAD + r * PITCH, SEG, SEG);
-  g.fillStyle = ACC; g.globalAlpha = .04;                                /* dot matrix */
+  g.fillStyle = ACC; g.globalAlpha = calm ? .025 : .04;                  /* dot matrix */
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cell(c, r);
 
   for (let i = 0; i < count; i++) {                                      /* far (top) to near (bottom) */
@@ -829,16 +852,16 @@ function drawWaterfall(dt) {
   if (rows !== fallRows || cols !== fallCols) { fallRows = rows; fallCols = cols; fall = []; }
   const playing = state === 'play' && !loading;
   fallT += dt;
-  if (playing && fallT >= .05) {                       /* new column every 50 ms while playing */
+  if (playing && fallT >= (calm ? .09 : .05)) {                       /* new column every 50 ms while playing */
     fallT = 0;
     const col = new Float32Array(rows);
     /* threshold + curve so only the loud bands light up */
-    for (let r = 0; r < rows; r++) col[r] = Math.pow(Math.max(0, (freq[1 + Math.floor(Math.pow(r / rows, 1.6) * 100)] / 255 + r / rows * .12 - .32) / .68), 1.3); /* + tilt: lift the quieter highs */
+    for (let r = 0; r < rows; r++) col[r] = Math.pow(Math.max(0, (freq[1 + Math.floor(Math.pow(r / rows, 1.6) * 100)] / 255 + r / rows * .12 - (calm ? .4 : .32)) / (calm ? .6 : .68)), 1.3); /* + tilt: lift the quieter highs */
     fall.push(col);
     if (fall.length > cols) fall.shift();
   }
   const cellSz = PITCH - 1, x0 = PAD + (cols - fall.length) * PITCH, base = SH - PAD;
-  g.fillStyle = ACC; g.globalAlpha = .07;
+  g.fillStyle = ACC; g.globalAlpha = calm ? .04 : .07;
   for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) g.fillRect(PAD + c * PITCH, base - (r + 1) * PITCH + 1, cellSz, cellSz);
   for (let c = 0; c < fall.length; c++) {
     const col = fall[c], x = x0 + c * PITCH;
@@ -864,6 +887,13 @@ function setVis(i, announce) {
   const l = $('visLabel');
   l.textContent = `${pad(visIdx + 1)} ${m.name}`;
   l.classList.add('on');
+  clearTimeout(labelTimer); labelTimer = setTimeout(() => l.classList.remove('on'), 1400);
+}
+function setDensity(c) {
+  calm = c;
+  try { localStorage.setItem('kgfm-density', calm ? 'calm' : 'full'); } catch (e) {}
+  const l = $('visLabel');
+  l.textContent = calm ? 'Calm' : 'Full'; l.classList.add('on');
   clearTimeout(labelTimer); labelTimer = setTimeout(() => l.classList.remove('on'), 1400);
 }
 const nextVis = () => { if (!np.classList.contains('min') || np.classList.contains('is-fs')) setVis(visIdx + 1, true); };
